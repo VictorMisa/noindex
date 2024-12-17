@@ -1,0 +1,86 @@
+// ==UserScript==
+// @name         Verificador de Indexabilidad
+// @namespace    https://example.com
+// @version      1.0
+// @description  Verifica si una página es indexable por Google revisando robots.txt, X-Robots-Tag y meta robots.
+// @author       Tu Nombre
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+(async function () {
+    const urlActual = window.location.href;
+    const robotsTxtUrl = new URL('/robots.txt', location.origin).href;
+
+    console.log(`%c Verificando indexabilidad para: ${urlActual}`, 'color: blue; font-weight: bold;');
+
+    function urlBloqueadaPorRobots(url, reglas) {
+        return reglas.some((linea) => {
+            const regla = linea.replace(/\*/g, '.*'); // Convierte * en .* (regex)
+            const regex = new RegExp(`^${regla}$`);
+            return regex.test(url);
+        });
+    }
+
+    let bloqueadaPorRobotsTxt = false;
+    try {
+        const respuesta = await fetch(robotsTxtUrl);
+        if (!respuesta.ok) throw new Error('No se pudo acceder al robots.txt');
+
+        const robotsTxt = await respuesta.text();
+        const lineas = robotsTxt.split('\n').map((linea) => linea.trim());
+        const disallowRules = lineas
+            .filter((linea) => linea.toLowerCase().startsWith('disallow:'))
+            .map((linea) => linea.split(':')[1]?.trim())
+            .filter((path) => path); // Elimina valores vacíos
+
+        const pathActual = new URL(urlActual).pathname;
+        if (urlBloqueadaPorRobots(pathActual, disallowRules)) {
+            bloqueadaPorRobotsTxt = true;
+            console.log('%c Bloqueada por robots.txt (Disallow).', 'color: red;');
+        } else {
+            console.log('%c NO bloqueada por robots.txt.', 'color: green;');
+        }
+    } catch (error) {
+        console.error('Error al verificar robots.txt:', error);
+    }
+
+    let bloqueadaPorXRobots = false;
+    try {
+        const respuesta = await fetch(urlActual);
+        const xRobotsTag = respuesta.headers.get('X-Robots-Tag') || '';
+
+        if (xRobotsTag.toLowerCase().includes('noindex')) {
+            bloqueadaPorXRobots = true;
+            console.log('%c Bloqueada por X-Robots-Tag (noindex).', 'color: red;');
+        } else if (xRobotsTag.toLowerCase().includes('index')) {
+            console.log('%c Permitida por X-Robots-Tag (index).', 'color: green;');
+        } else {
+            console.log('%c X-Robots-Tag no especificado.', 'color: orange;');
+        }
+    } catch (error) {
+        console.error('Error al verificar X-Robots-Tag:', error);
+    }
+
+    let bloqueadaPorMetaRobots = false;
+    const metaRobots = document.querySelector('meta[name="robots"]');
+    if (metaRobots) {
+        const content = metaRobots.getAttribute('content').toLowerCase();
+        if (content.includes('noindex')) {
+            bloqueadaPorMetaRobots = true;
+            console.log('%c Bloqueada por meta robots (noindex).', 'color: red;');
+        } else if (content.includes('index')) {
+            console.log('%c Permitida por meta robots (index).', 'color: green;');
+        } else {
+            console.log('%c Meta robots no especifica index/noindex.', 'color: orange;');
+        }
+    } else {
+        console.log('%c No se encontró meta robots.', 'color: orange;');
+    }
+
+    if (bloqueadaPorRobotsTxt || bloqueadaPorXRobots || bloqueadaPorMetaRobots) {
+        console.log('%c Esta página NO es indexable.', 'color: red; font-weight: bold;');
+    } else {
+        console.log('%c Esta página es indexable.', 'color: green; font-weight: bold;');
+    }
+})();
